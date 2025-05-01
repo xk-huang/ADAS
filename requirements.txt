@@ -5,3 +5,5 @@ openai
 backoff
 scipy
 blobfile
+python-dotenv
+click

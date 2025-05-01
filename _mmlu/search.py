@@ -14,7 +14,35 @@ from tqdm import tqdm
 
 from mmlu_prompt import get_init_archive, get_prompt, get_reflexion_prompt
 
-client = openai.OpenAI()
+# client = openai.OpenAI()
+import dotenv
+dotenv.load_dotenv(override=True)
+
+# NOTE(xk): use azure openai
+client = openai.AzureOpenAI(
+    azure_endpoint = os.getenv("AZURE_ENDPOINT"),
+    api_key = os.getenv("AZURE_API_KEY"),
+    api_version = os.getenv("AZURE_API_VERSION"),
+)
+
+if os.getenv("DEBUG_API", None) is not None:
+    models = [os.getenv("AZURE_META_AGENT_MODEL"), os.getenv("AZURE_AGENT_MODEL")]
+    for model in models:
+        print(f"Model: {model}")
+        test_api_response = client.chat.completions.create(
+            model=model,
+            messages=[
+                # {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello! Who are you?"},
+            ],
+            temperature=0.5, max_tokens=4096, stop=None
+        )
+        content = test_api_response.choices[0].message.content
+        prompt_tokens = test_api_response.usage.prompt_tokens
+        completion_tokens = test_api_response.usage.completion_tokens
+        print(f"Response: {content}")
+        print(f"Prompt tokens: {prompt_tokens}, Completion tokens: {completion_tokens}")
+        breakpoint()
 
 from utils import format_multichoice_question, random_id, bootstrap_confidence_interval
 
@@ -73,11 +101,13 @@ class LLMAgentBase():
     """
 
     def __init__(self, output_fields: list, agent_name: str,
-                 role='helpful assistant', model='gpt-3.5-turbo-0125', temperature=0.5) -> None:
+                 role='helpful assistant', model=None, temperature=0.5) -> None:
         self.output_fields = output_fields
         self.agent_name = agent_name
 
         self.role = role
+        if model is None:
+            model = os.getenv("AZURE_AGENT_MODEL")
         self.model = model
         self.temperature = temperature
 
@@ -118,6 +148,9 @@ class LLMAgentBase():
             # print(e)
             if "maximum context length" in str(e) and SEARCHING_MODE:
                 raise AssertionError("The context is too long. Please try to design the agent to have shorter context.")
+            else:
+                print(f"Other error in LLM: {e}")
+
             # try to fill in the missing field
             for key in self.output_fields:
                 if not key in response_json and len(response_json) < len(self.output_fields):
@@ -315,6 +348,10 @@ def evaluate_forward_fn(args, forward_str):
     agentSystem = AgentSystem()
 
     acc_list = []
+    if os.getenv("DEBUG", None) is not None:
+        agentSystem.forward(task_queue[0])
+        breakpoint()
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         results = list(tqdm(executor.map(agentSystem.forward, task_queue), total=len(task_queue)))
 
@@ -369,16 +406,23 @@ if __name__ == "__main__":
     parser.add_argument('--multiprocessing', action='store_true', default=True)
     parser.add_argument('--max_workers', type=int, default=48)
     parser.add_argument('--debug', action='store_true', default=True)
-    parser.add_argument('--save_dir', type=str, default='results/')
-    parser.add_argument('--expr_name', type=str, default="mmlu_gpt3.5_results")
+    parser.add_argument('--save_dir', type=str, default='outputs/')
+    parser.add_argument('--expr_name', type=str, default=None)
     parser.add_argument('--n_generation', type=int, default=30)
     parser.add_argument('--debug_max', type=int, default=3)
-    parser.add_argument('--model',
-                        type=str,
-                        default='gpt-4o-2024-05-13',
-                        choices=['gpt-4-turbo-2024-04-09', 'gpt-3.5-turbo-0125', 'gpt-4o-2024-05-13'])
+    parser.add_argument('--model', type=str, default=None)
 
     args = parser.parse_args()
+
+    if args.expr_name is None:
+        args.expr_name = f"mmlu_{os.getenv('AZURE_AGENT_MODEL')}_results"
+    if args.model is None:
+        args.model = os.getenv("AZURE_META_AGENT_MODEL")
+
+    print(f"Agent model: {os.getenv('AZURE_AGENT_MODEL')}")
+    print(f"Meta agent model: {os.getenv('AZURE_META_AGENT_MODEL')}")
+    print(f"Experiment name: {args.expr_name}")
+
     # search
     SEARCHING_MODE = True
     search(args)
