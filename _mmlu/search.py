@@ -178,6 +178,8 @@ class AgentSystem():
 
 def search(args):
     file_path = os.path.join(args.save_dir, f"{args.expr_name}_run_archive.json")
+    print(f"file_path: {file_path}")
+
     if os.path.exists(file_path):
         with open(file_path, 'r') as json_file:
             archive = json.load(json_file)
@@ -276,7 +278,8 @@ def search(args):
 
 def evaluate(args):
     file_path = os.path.join(args.save_dir, f"{args.expr_name}_run_archive.json")
-    eval_file_path = str(os.path.join(args.save_dir, f"{args.expr_name}_run_archive.json")).strip(".json") + "_evaluate.json"
+    # NOTE (xk): use rstrip to remove the .json suffix; using strip causes `outputs/*` -> `utputs/*`
+    eval_file_path = str(os.path.join(args.save_dir, f"{args.expr_name}_run_archive.json")).rstrip(".json") + "_evaluate.json"
     with open(file_path, 'r') as json_file:
         archive = json.load(json_file)
     eval_archive = []
@@ -425,8 +428,10 @@ if __name__ == "__main__":
 
     # search
     SEARCHING_MODE = True
+    print("=============Searching=================")
     search(args)
 
     # evaluate
     SEARCHING_MODE = False
+    print("=============Evaluating=================")
     evaluate(args)
